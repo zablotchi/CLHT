@@ -11,7 +11,7 @@ else ifeq ($(DEBUG),2)
   DEBUG_FLAGS=-Wall
   CFLAGS += -O0 -DADD_PADDING -fno-inline
 else ifeq ($(DEBUG),3)
-  DEBUG_FLAGS=-Wall -g -ggdb 
+  DEBUG_FLAGS=-Wall -g -ggdb
   CFLAGS += -O3 -DADD_PADDING -fno-inline
 else
   DEBUG_FLAGS=-Wall
@@ -100,7 +100,7 @@ endif
 ifeq ($(UNAME), diascld9)
 PLATFORM=-DOPTERON2
 GCC=gcc
-LIBS += 
+LIBS +=
 endif
 
 ifeq ($(UNAME), diassrv8)
@@ -113,13 +113,13 @@ endif
 ifeq ($(UNAME), diascld19)
 PLATFORM=-DXEON2
 GCC=gcc
-LIBS += 
+LIBS +=
 endif
 
 ifeq ($(UNAME), maglite)
 PLATFORM=-DSPARC
 GCC:=/opt/csw/bin/gcc
-LIBS+= 
+LIBS+=
 CFLAGS += -m64 -mcpu=v9 -mtune=v9
 endif
 
@@ -139,12 +139,20 @@ ifeq ($(UNAME), ol-collab1)
 PLATFORM=-DT44
 GCC=/usr/sfw/bin/gcc
 CFLAGS += -m64
-LIBS+= 
+LIBS+=
 endif
 
 ifeq ($(PLATFORM_NUMA), 1)
 CFLAGS += -DNUMA
 LIBS += -lnuma
+endif
+
+ifeq ($(SKEW9010),1)
+    CFLAGS += -DSKEW9010
+endif
+
+ifeq ($(INIT_SEQ),1)
+    CFLAGS += -DINIT_SEQ
 endif
 
 CFLAGS += $(PLATFORM)
@@ -179,10 +187,10 @@ all: $(ALL)
 	libclht_lb_linked.a libclht_lb_packed.a libclht_lb_lock_ins.a \
 	libclht_lf.a libclht_lf_res.a libclht_lf_only_map_rem.a
 
-normal: clht_lb_res clht_lf_res 
+normal: clht_lb_res clht_lf_res
 
 
-%.o:: $(SRC)/%.c 
+%.o:: $(SRC)/%.c
 	$(GCC) $(CFLAGS) $(INCLUDES) -o $@ -c $<
 
 clht_gc_linked.o: $(SRC)/clht_gc.c
@@ -317,5 +325,5 @@ noise: $(BMARKS)/noise.c $(OBJ_FILES)
 
 
 
-clean:				
+clean:
 	rm -f *.o *.a clht_* math_cache* snap_stress

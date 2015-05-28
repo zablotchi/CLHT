@@ -1,7 +1,7 @@
-/*   
+/*
  *   File: test.c
  *   Author: Vasileios Trigonakis <vasileios.trigonakis@epfl.ch>
- *   Description: 
+ *   Description:
  *   test.c is part of ASCYLIB
  *
  * The MIT License (MIT)
@@ -117,7 +117,7 @@ extern __thread uint32_t put_num_failed_on_new;
  * BARRIER
  * ################################################################### */
 
-typedef struct barrier 
+typedef struct barrier
 {
   pthread_cond_t complete;
   pthread_mutex_t mutex;
@@ -125,7 +125,7 @@ typedef struct barrier
   int crossing;
 } barrier_t;
 
-void barrier_init(barrier_t *b, int n) 
+void barrier_init(barrier_t *b, int n)
 {
   pthread_cond_init(&b->complete, NULL);
   pthread_mutex_init(&b->mutex, NULL);
@@ -133,7 +133,7 @@ void barrier_init(barrier_t *b, int n)
   b->crossing = 0;
 }
 
-void barrier_cross(barrier_t *b) 
+void barrier_cross(barrier_t *b)
 {
   pthread_mutex_lock(&b->mutex);
   /* One more thread through */
@@ -172,7 +172,7 @@ typedef struct thread_data
 } thread_data_t;
 
 void*
-test(void* thread) 
+test(void* thread)
 {
   thread_data_t* td = (thread_data_t*) thread;
   uint8_t ID = td->id;
@@ -181,8 +181,8 @@ test(void* thread)
 
   clht_t* hashtable = td->ht;
 
-  clht_gc_thread_init(hashtable, ID);    
-    
+  clht_gc_thread_init(hashtable, ID);
+
 #if defined(COMPUTE_LATENCY) && PFD_TYPE == 0
   volatile ticks start_acq, end_acq;
   volatile ticks correction = getticks_correction_calc();
@@ -206,21 +206,21 @@ test(void* thread)
   uint64_t my_putting_count_succ = 0;
   uint64_t my_getting_count_succ = 0;
   uint64_t my_removing_count_succ = 0;
-    
+
 #if defined(COMPUTE_LATENCY) && PFD_TYPE == 0
   volatile ticks start_acq, end_acq;
   volatile ticks correction = getticks_correction_calc();
 #endif
-    
+
   barrier_cross(&barrier);
 
   seeds = seed_rand();
-    
+
   uint64_t key;
   int c = 0;
   uint32_t scale_rem = (uint32_t) (update_rate * UINT_MAX);
   uint32_t scale_put = (uint32_t) (put_rate * UINT_MAX);
-    
+
   int i;
   uint32_t num_elems_thread = (uint32_t) (num_elements * filling_rate / num_threads);
   int32_t missing = (uint32_t) (num_elements * filling_rate) - (num_elems_thread * num_threads);
@@ -228,11 +228,28 @@ test(void* thread)
     {
       num_elems_thread++;
     }
-    
-  for(i = 0; i < num_elems_thread; i++) 
+
+#ifdef INIT_SEQ
+  if (ID == 0) {
+    for (i = range - 1; i >= range/2; i--) {
+      clht_put(hashtable, i, i*i);
+    }
+  }
+#else
+  for(i = 0; i < num_elems_thread; i++)
     {
       key = (my_random(&(seeds[0]), &(seeds[1]), &(seeds[2])) % (rand_max + 1)) + rand_min;
-      
+
+      if(!clht_put(hashtable, key, key*key))
+  {
+    i--;
+  }
+    }
+#endif
+  for(i = 0; i < num_elems_thread; i++)
+    {
+      key = (my_random(&(seeds[0]), &(seeds[1]), &(seeds[2])) % (rand_max + 1)) + rand_min;
+
       if(!clht_put(hashtable, key, key*key))
 	{
 	  i--;
@@ -255,60 +272,72 @@ test(void* thread)
 	{
 	  printf("size of ht is: %zu\n", clht_size(hashtable->ht));
 	}
-    }  
+    }
 #endif
 
   barrier_cross(&barrier_global);
 
-  while (stop == 0) 
+  while (stop == 0)
     {
-      c = (uint32_t)(my_random(&(seeds[0]),&(seeds[1]),&(seeds[2])));	
-      key = (c & rand_max) + rand_min;					
-									
-      if (unlikely(c <= scale_put))						
-	{									
-	  int res;								
-	  START_TS(1);							
+#ifdef SKEW9010
+      c = (uint32_t)(my_random(&(seeds[0]),&(seeds[1]),&(seeds[2])));
+      if (c <= (uint32_t) (0.9 * UINT_MAX)) {
+        key = ((c & (rand_max/10)) + rand_min)*10;
+      } else {
+        key = (c & rand_max) + rand_min;
+      }
+
+      c = (uint32_t)(my_random(&(seeds[0]),&(seeds[1]),&(seeds[2])));
+
+#else
+      c = (uint32_t)(my_random(&(seeds[0]),&(seeds[1]),&(seeds[2])));
+      key = (c & rand_max) + rand_min;
+
+#endif
+      if (unlikely(c <= scale_put))
+	{
+	  int res;
+	  START_TS(1);
 	  res = clht_put(hashtable, key, c + 1);
-	  if(res)								
-	    {								
-	      END_TS(1, my_putting_count_succ);				
-	      ADD_DUR(my_putting_succ);					
-	      my_putting_count_succ++;					
-	    }								
-	  END_TS_ELSE(4, my_putting_count - my_putting_count_succ,		
-		      my_putting_fail);					
-	  my_putting_count++;						
-	}									
-      else if(unlikely(c <= scale_rem))					
-	{									
-	  int removed;							
-	  START_TS(2);							
+	  if(res)
+	    {
+	      END_TS(1, my_putting_count_succ);
+	      ADD_DUR(my_putting_succ);
+	      my_putting_count_succ++;
+	    }
+	  END_TS_ELSE(4, my_putting_count - my_putting_count_succ,
+		      my_putting_fail);
+	  my_putting_count++;
+	}
+      else if(unlikely(c <= scale_rem))
+	{
+	  int removed;
+	  START_TS(2);
 	  removed = clht_remove(hashtable, key);
-	  if(removed != 0)							
-	    {								
-	      END_TS(2, my_removing_count_succ);				
-	      ADD_DUR(my_removing_succ);					
-	      my_removing_count_succ++;					
-	    }								
-	  END_TS_ELSE(5, my_removing_count - my_removing_count_succ,	
-		      my_removing_fail);					
-	  my_removing_count++;						
-	}									
-      else									
-	{									
-	  clht_val_t res;								
-	  START_TS(0);							
+	  if(removed != 0)
+	    {
+	      END_TS(2, my_removing_count_succ);
+	      ADD_DUR(my_removing_succ);
+	      my_removing_count_succ++;
+	    }
+	  END_TS_ELSE(5, my_removing_count - my_removing_count_succ,
+		      my_removing_fail);
+	  my_removing_count++;
+	}
+      else
+	{
+	  clht_val_t res;
+	  START_TS(0);
 	  res = clht_get(hashtable->ht, key);
-	  if(res != 0)							
-	    {								
-	      END_TS(0, my_getting_count_succ);				
-	      ADD_DUR(my_getting_succ);					
-	      my_getting_count_succ++;					
-	    }								
+	  if(res != 0)
+	    {
+	      END_TS(0, my_getting_count_succ);
+	      ADD_DUR(my_getting_succ);
+	      my_getting_count_succ++;
+	    }
 	  END_TS_ELSE(3, my_getting_count - my_getting_count_succ,
-		      my_getting_fail);					
-	  my_getting_count++;						
+		      my_getting_fail);
+	  my_getting_count++;
 	}
     }
 
@@ -319,7 +348,7 @@ test(void* thread)
       /* 	     put_num_restarts, put_num_failed_expand, put_num_failed_on_new); */
     }
 #endif
-    
+
   /* printf("gets: %-10llu / succ: %llu\n", num_get, num_get_succ); */
   /* printf("rems: %-10llu / succ: %llu\n", num_rem, num_rem_succ); */
   barrier_cross(&barrier);
@@ -335,7 +364,7 @@ test(void* thread)
 	{
 	  printf("size of ht is: %zu\n", clht_size(hashtable->ht));
 	}
-    }  
+    }
 #endif
 
 #if defined(COMPUTE_LATENCY)
@@ -367,10 +396,10 @@ test(void* thread)
 }
 
 int
-main(int argc, char **argv) 
+main(int argc, char **argv)
 {
   set_cpu(the_cores[0]);
-    
+
   assert(sizeof(clht_hashtable_t) == 2*CACHE_LINE_SIZE);
 
   printf("# using: %s\n", clht_type_desc());
@@ -393,18 +422,18 @@ main(int argc, char **argv)
   int put_explicit = 0;
 
   int i, c;
-  while(1) 
+  while(1)
     {
       i = 0;
       c = getopt_long(argc, argv, "hAf:d:i:n:r:s:u:m:a:l:p:b:v:f:", long_options, &i);
-		
+
       if(c == -1)
 	break;
-		
+
       if(c == 0 && long_options[i].flag == 0)
 	c = long_options[i].val;
-		
-      switch(c) 
+
+      switch(c)
 	{
 	case 0:
 	  /* Flag is automatically set */
@@ -553,14 +582,14 @@ main(int argc, char **argv)
 #else
   rand_max = num_elements - 1;
 #endif
-    
+
   struct timeval start, end;
   struct timespec timeout;
   timeout.tv_sec = duration / 1000;
   timeout.tv_nsec = (duration % 1000) * 1000000;
-    
+
   stop = 0;
-    
+
   /* Initialize the hashtable */
 
   clht_t* hashtable = clht_create(num_buckets);
@@ -579,19 +608,19 @@ main(int argc, char **argv)
   getting_count_succ = (ticks *) calloc(num_threads , sizeof(ticks));
   removing_count = (ticks *) calloc(num_threads , sizeof(ticks));
   removing_count_succ = (ticks *) calloc(num_threads , sizeof(ticks));
-    
+
   pthread_t threads[num_threads];
   pthread_attr_t attr;
   int rc;
   void *status;
-    
+
   barrier_init(&barrier_global, num_threads + 1);
   barrier_init(&barrier, num_threads);
-    
+
   /* Initialize and set thread detached attribute */
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-    
+
   thread_data_t* tds = (thread_data_t*) malloc(num_threads * sizeof(thread_data_t));
 
   long t;
@@ -605,12 +634,12 @@ main(int argc, char **argv)
 	  printf("ERROR; return code from pthread_create() is %d\n", rc);
 	  exit(-1);
 	}
-        
+
     }
-    
+
   /* Free attribute and wait for the other threads */
   pthread_attr_destroy(&attr);
-    
+
   barrier_cross(&barrier_global);
   gettimeofday(&start, NULL);
   nanosleep(&timeout, NULL);
@@ -618,11 +647,11 @@ main(int argc, char **argv)
   stop = 1;
   gettimeofday(&end, NULL);
   duration = (end.tv_sec * 1000 + end.tv_usec / 1000) - (start.tv_sec * 1000 + start.tv_usec / 1000);
-    
-  for(t = 0; t < num_threads; t++) 
+
+  for(t = 0; t < num_threads; t++)
     {
       rc = pthread_join(threads[t], &status);
-      if (rc) 
+      if (rc)
 	{
 	  printf("ERROR; return code from pthread_join() is %d\n", rc);
 	  exit(-1);
@@ -630,7 +659,7 @@ main(int argc, char **argv)
     }
 
   free(tds);
-    
+
   volatile ticks putting_suc_total = 0;
   volatile ticks putting_fal_total = 0;
   volatile ticks getting_suc_total = 0;
@@ -643,8 +672,8 @@ main(int argc, char **argv)
   volatile uint64_t getting_count_total_succ = 0;
   volatile uint64_t removing_count_total = 0;
   volatile uint64_t removing_count_total_succ = 0;
-    
-  for(t=0; t < num_threads; t++) 
+
+  for(t=0; t < num_threads; t++)
     {
       putting_suc_total += putting_succ[t];
       putting_fal_total += putting_fail[t];
@@ -685,15 +714,15 @@ main(int argc, char **argv)
   double putting_perc = 100.0 * (1 - ((double)(total - putting_count_total) / total));
   double getting_perc = 100.0 * (1 - ((double)(total - getting_count_total) / total));
   double removing_perc = 100.0 * (1 - ((double)(total - removing_count_total) / total));
-  printf("puts: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) putting_count_total, 
+  printf("puts: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) putting_count_total,
 	 (LLU) putting_count_total_succ,
 	 (1 - (double) (putting_count_total - putting_count_total_succ) / putting_count_total) * 100,
 	 putting_perc);
-  printf("gets: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) getting_count_total, 
+  printf("gets: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) getting_count_total,
 	 (LLU) getting_count_total_succ,
 	 (1 - (double) (getting_count_total - getting_count_total_succ) / getting_count_total) * 100,
 	 getting_perc);
-  printf("rems: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) removing_count_total, 
+  printf("rems: %-10llu | %-10llu | %10.1f%% | %.1f%%\n", (LLU) removing_count_total,
 	 (LLU) removing_count_total_succ,
 	 (1 - (double) (removing_count_total - removing_count_total_succ) / removing_count_total) * 100,
 	 removing_perc);
@@ -706,10 +735,10 @@ main(int argc, char **argv)
   double throughput = (putting_count_total + getting_count_total + removing_count_total) * 1000.0 / duration;
   printf("#txs %zu\t(%-10.0f\n", num_threads, throughput);
   printf("#Mops %.3f\n", throughput / 1e6);
-    
+
   /* Last thing that main() should do */
   //printf("Main: program completed. Exiting.\n");
   pthread_exit(NULL);
-    
+
   return 0;
 }
